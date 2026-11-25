@@ -1363,9 +1363,7 @@
           </summary>
           <div class="body">
             <p>
-              Option content is a new React element on every pass, so reusing
-              unchanged slices by reference never matched, and no view memoises
-              on them. The attempt was removed. It comes back with memoised
+              Option content is a new React element on every pass, and no view memoises on its parts, so reusing slices by reference would save nothing. It belongs with memoised
               option rows, options shaped as
               <code>{ id, caption, content }</code>, content cached per item,
               and <code>comparer.shallow</code> slices, tested by render counts.
@@ -1393,27 +1391,9 @@
       <div class="wrap">
         <h2>What's next</h2>
         <p class="sub">
-          The architecture review found four soft spots. Two are fixed in this
-          PR; two wait for the view split.
+          Two refinements wait for the view split into parts, where memoised components make them pay off.
         </p>
         <div class="follow">
-          <div class="card">
-            <span class="status done">Fixed in #2572</span>
-            <h3 style="margin-top: 8px">Mendix writes during render</h3>
-            <p>
-              Reactions that write to Mendix run after the commit, through the
-              setup host's scheduler.
-            </p>
-          </div>
-          <div class="card">
-            <span class="status done">Fixed in #2572</span>
-            <h3 style="margin-top: 8px">Lazy-loading state in two places</h3>
-            <p>
-              The first-page latch lives in
-              <code>DatasourceOptionsProvider</code>, next to the lookup it
-              depends on.
-            </p>
-          </div>
           <div class="card">
             <span class="status later">With the view split</span>
             <h3 style="margin-top: 8px">Text-only changes</h3>
