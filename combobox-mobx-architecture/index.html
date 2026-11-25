@@ -1,0 +1,2107 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 16 16%27%3E%3Crect width=%2716%27 height=%2716%27 rx=%274%27 fill=%27%232f5bea%27/%3E%3C/svg%3E">
+    <title>Combobox MobX Architecture</title>
+    <meta
+      name="description"
+      content="Design document for the MobX rewrite of the combobox-web pluggable widget (mendix/web-widgets PR #2572)."
+    />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        --bg: #f7f7f5;
+        --surface: #ffffff;
+        --surface-2: #f0efeb;
+        --text: #1d1d1b;
+        --muted: #5f5e58;
+        --line: #dcdad3;
+        --accent: #2f5bea;
+        --accent-soft: #e4eaff;
+        --state: #b4530e;
+        --state-soft: #fdebdc;
+        --derive: #0f7a55;
+        --derive-soft: #dcf3ea;
+        --effect: #8a3fd1;
+        --effect-soft: #efe3fb;
+        --mendix: #3d3c37;
+        --mendix-soft: #e9e8e3;
+        --shadow: 0 1px 2px rgba(0, 0, 0, 0.05), 0 4px 16px rgba(0, 0, 0, 0.05);
+        --radius: 12px;
+        --mono:
+          "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+        --sans: Inter, system-ui, -apple-system, "Segoe UI", sans-serif;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root:not([data-theme="light"]) {
+          --bg: #131312;
+          --surface: #1c1c1a;
+          --surface-2: #242421;
+          --text: #ecebe6;
+          --muted: #a3a29b;
+          --line: #34332f;
+          --accent: #7d9bff;
+          --accent-soft: #1f2a4d;
+          --state: #f0a061;
+          --state-soft: #3b2614;
+          --derive: #4fd1a1;
+          --derive-soft: #123327;
+          --effect: #c49af0;
+          --effect-soft: #2e1f40;
+          --mendix: #d8d7d0;
+          --mendix-soft: #2b2a27;
+          --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 4px 16px rgba(0, 0, 0, 0.3);
+        }
+      }
+      :root[data-theme="dark"] {
+        --bg: #131312;
+        --surface: #1c1c1a;
+        --surface-2: #242421;
+        --text: #ecebe6;
+        --muted: #a3a29b;
+        --line: #34332f;
+        --accent: #7d9bff;
+        --accent-soft: #1f2a4d;
+        --state: #f0a061;
+        --state-soft: #3b2614;
+        --derive: #4fd1a1;
+        --derive-soft: #123327;
+        --effect: #c49af0;
+        --effect-soft: #2e1f40;
+        --mendix: #d8d7d0;
+        --mendix-soft: #2b2a27;
+        --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 4px 16px rgba(0, 0, 0, 0.3);
+      }
+      * {
+        box-sizing: border-box;
+      }
+      html {
+        scroll-behavior: smooth;
+      }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--text);
+        font: 15px/1.6 var(--sans);
+      }
+      code,
+      .mono {
+        font-family: var(--mono);
+        font-size: 0.86em;
+      }
+      code {
+        background: var(--surface-2);
+        padding: 0.1em 0.35em;
+        border-radius: 5px;
+      }
+      a {
+        color: var(--accent);
+      }
+      .wrap {
+        max-width: 1120px;
+        margin: 0 auto;
+        padding: 0 16px;
+      }
+      header.top {
+        position: sticky;
+        top: 0;
+        z-index: 10;
+        background: color-mix(in srgb, var(--bg) 88%, transparent);
+        backdrop-filter: blur(8px);
+        border-bottom: 1px solid var(--line);
+      }
+      header.top .wrap {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        height: 56px;
+      }
+      header.top strong {
+        font-weight: 600;
+        white-space: nowrap;
+      }
+      nav.toc {
+        display: flex;
+        gap: 4px;
+        overflow-x: auto;
+        flex: 1;
+        scrollbar-width: none;
+      }
+      nav.toc a {
+        color: var(--muted);
+        text-decoration: none;
+        padding: 6px 10px;
+        border-radius: 8px;
+        font-size: 13.5px;
+        white-space: nowrap;
+      }
+      nav.toc a:hover {
+        background: var(--surface-2);
+        color: var(--text);
+      }
+      .theme-btn {
+        border: 1px solid var(--line);
+        background: var(--surface);
+        color: var(--text);
+        border-radius: 8px;
+        padding: 6px 10px;
+        cursor: pointer;
+        font: inherit;
+        font-size: 13px;
+      }
+      .hero {
+        padding: 56px 0 24px;
+      }
+      .eyebrow {
+        color: var(--accent);
+        font-weight: 600;
+        font-size: 13px;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+      }
+      h1 {
+        font-size: clamp(30px, 5vw, 44px);
+        line-height: 1.12;
+        margin: 8px 0 14px;
+        letter-spacing: -0.02em;
+      }
+      h2 {
+        font-size: 26px;
+        margin: 0 0 6px;
+        letter-spacing: -0.01em;
+      }
+      h3 {
+        font-size: 17px;
+        margin: 0 0 6px;
+      }
+      .lede {
+        color: var(--muted);
+        font-size: 17px;
+        max-width: 760px;
+      }
+      .meta {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-top: 18px;
+      }
+      .chip {
+        border: 1px solid var(--line);
+        background: var(--surface);
+        border-radius: 999px;
+        padding: 4px 12px;
+        font-size: 13px;
+        color: var(--muted);
+      }
+      section {
+        padding: 40px 0;
+        border-top: 1px solid var(--line);
+      }
+      section > .wrap > p.sub {
+        color: var(--muted);
+        margin: 0 0 22px;
+        max-width: 760px;
+      }
+      .card {
+        background: var(--surface);
+        border: 1px solid var(--line);
+        border-radius: var(--radius);
+        box-shadow: var(--shadow);
+      }
+      .grid-3 {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 14px;
+      }
+      .principle {
+        padding: 18px;
+      }
+      .principle .n {
+        font-family: var(--mono);
+        color: var(--accent);
+        font-size: 13px;
+      }
+      .principle p {
+        margin: 6px 0 0;
+        color: var(--muted);
+        font-size: 14px;
+      }
+
+      /* Legend */
+      .legend {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 14px;
+        margin-bottom: 14px;
+        font-size: 13px;
+        color: var(--muted);
+      }
+      .legend span {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+      }
+      .sw {
+        width: 12px;
+        height: 12px;
+        border-radius: 3px;
+        display: inline-block;
+      }
+
+      /* Architecture diagram */
+      .arch {
+        display: grid;
+        grid-template-columns: minmax(0, 1.55fr) minmax(0, 1fr);
+        gap: 16px;
+        align-items: start;
+      }
+      .diagram {
+        padding: 18px;
+      }
+      .layer {
+        border: 1px dashed var(--line);
+        border-radius: 10px;
+        padding: 12px;
+        margin-bottom: 12px;
+        position: relative;
+      }
+      .layer:last-child {
+        margin-bottom: 0;
+      }
+      .layer-title {
+        font-size: 11.5px;
+        letter-spacing: 0.07em;
+        text-transform: uppercase;
+        color: var(--muted);
+        font-weight: 600;
+        margin-bottom: 8px;
+        display: flex;
+        justify-content: space-between;
+        gap: 8px;
+      }
+      .layer-title .mono {
+        text-transform: none;
+        letter-spacing: 0;
+        font-weight: 400;
+      }
+      .row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+      .node {
+        flex: 1 1 150px;
+        text-align: left;
+        border: 1.5px solid var(--line);
+        background: var(--surface);
+        color: var(--text);
+        border-radius: 9px;
+        padding: 9px 11px;
+        cursor: pointer;
+        font: inherit;
+        transition:
+          transform 0.12s,
+          box-shadow 0.12s,
+          border-color 0.12s,
+          background 0.12s;
+        position: relative;
+      }
+      .node:hover {
+        transform: translateY(-1px);
+        box-shadow: var(--shadow);
+      }
+      .node:focus-visible {
+        outline: 2px solid var(--accent);
+        outline-offset: 2px;
+      }
+      .node .t {
+        font-weight: 600;
+        font-size: 14px;
+        display: block;
+      }
+      .node .d {
+        color: var(--muted);
+        font-size: 12.5px;
+        display: block;
+        line-height: 1.4;
+        margin-top: 2px;
+      }
+      .node[data-kind="mendix"] {
+        border-left: 4px solid var(--mendix);
+      }
+      .node[data-kind="state"] {
+        border-left: 4px solid var(--state);
+      }
+      .node[data-kind="derive"] {
+        border-left: 4px solid var(--derive);
+      }
+      .node[data-kind="effect"] {
+        border-left: 4px solid var(--effect);
+      }
+      .node[data-kind="view"] {
+        border-left: 4px solid var(--accent);
+      }
+      .node.selected {
+        border-color: var(--accent);
+        background: var(--accent-soft);
+      }
+      .node.lit {
+        border-color: var(--accent);
+        box-shadow: 0 0 0 3px var(--accent-soft);
+      }
+      .node.dim {
+        opacity: 0.38;
+      }
+      .node .step-badge {
+        position: absolute;
+        top: -9px;
+        right: -7px;
+        background: var(--accent);
+        color: #fff;
+        border-radius: 999px;
+        font-size: 11px;
+        font-weight: 700;
+        min-width: 20px;
+        height: 20px;
+        display: none;
+        align-items: center;
+        justify-content: center;
+        padding: 0 5px;
+        font-family: var(--mono);
+      }
+      .node.lit .step-badge {
+        display: inline-flex;
+      }
+      .arrow {
+        text-align: center;
+        color: var(--muted);
+        font-size: 12px;
+        margin: -4px 0 8px;
+        font-family: var(--mono);
+      }
+      .nested {
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        padding: 10px;
+        background: var(--surface-2);
+        margin-top: 8px;
+      }
+      .nested .layer-title {
+        margin-bottom: 6px;
+      }
+
+      .panel {
+        padding: 20px;
+        position: sticky;
+        top: 72px;
+        min-height: 280px;
+      }
+      .panel .kind {
+        display: inline-block;
+        font-size: 11.5px;
+        font-weight: 600;
+        letter-spacing: 0.05em;
+        text-transform: uppercase;
+        padding: 2px 8px;
+        border-radius: 6px;
+        margin-bottom: 8px;
+      }
+      .kind.mendix {
+        background: var(--mendix-soft);
+        color: var(--mendix);
+      }
+      .kind.state {
+        background: var(--state-soft);
+        color: var(--state);
+      }
+      .kind.derive {
+        background: var(--derive-soft);
+        color: var(--derive);
+      }
+      .kind.effect {
+        background: var(--effect-soft);
+        color: var(--effect);
+      }
+      .kind.view {
+        background: var(--accent-soft);
+        color: var(--accent);
+      }
+      .panel h3 {
+        font-size: 19px;
+      }
+      .panel .file {
+        font-family: var(--mono);
+        font-size: 12.5px;
+        color: var(--muted);
+        word-break: break-all;
+      }
+      .panel dl {
+        margin: 14px 0 0;
+      }
+      .panel dt {
+        font-size: 12px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        color: var(--muted);
+        margin-top: 12px;
+      }
+      .panel dd {
+        margin: 4px 0 0;
+        font-size: 14px;
+      }
+      .panel ul {
+        margin: 4px 0 0;
+        padding-left: 18px;
+        font-size: 14px;
+      }
+      .panel .empty {
+        color: var(--muted);
+      }
+
+      /* Flows */
+      .flow-tabs {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-bottom: 14px;
+      }
+      .tab {
+        border: 1px solid var(--line);
+        background: var(--surface);
+        color: var(--text);
+        padding: 8px 14px;
+        border-radius: 999px;
+        cursor: pointer;
+        font: inherit;
+        font-size: 14px;
+      }
+      .tab[aria-selected="true"] {
+        background: var(--text);
+        color: var(--bg);
+        border-color: var(--text);
+      }
+      .flow {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr);
+        gap: 16px;
+      }
+      .steps {
+        padding: 8px;
+      }
+      .step {
+        display: flex;
+        gap: 12px;
+        padding: 12px;
+        border-radius: 9px;
+        cursor: pointer;
+        border: 1px solid transparent;
+      }
+      .step:hover {
+        background: var(--surface-2);
+      }
+      .step.active {
+        background: var(--accent-soft);
+        border-color: var(--accent);
+      }
+      .step .num {
+        flex: 0 0 26px;
+        height: 26px;
+        border-radius: 999px;
+        background: var(--surface-2);
+        color: var(--muted);
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        font-family: var(--mono);
+        font-size: 12.5px;
+        font-weight: 600;
+      }
+      .step.active .num {
+        background: var(--accent);
+        color: #fff;
+      }
+      .step .st {
+        font-weight: 600;
+        font-size: 14px;
+      }
+      .step .sd {
+        color: var(--muted);
+        font-size: 13.5px;
+        margin-top: 2px;
+      }
+      .flow-controls {
+        display: flex;
+        gap: 8px;
+        padding: 8px 12px 12px;
+      }
+      .btn {
+        border: 1px solid var(--line);
+        background: var(--surface);
+        color: var(--text);
+        padding: 7px 12px;
+        border-radius: 8px;
+        cursor: pointer;
+        font: inherit;
+        font-size: 13.5px;
+      }
+      .btn.primary {
+        background: var(--accent);
+        border-color: var(--accent);
+        color: #fff;
+      }
+      .flow-viz {
+        padding: 18px;
+      }
+      .flow-viz .mini {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 8px;
+      }
+      .flow-note {
+        margin-top: 14px;
+        padding: 12px 14px;
+        border-radius: 9px;
+        background: var(--surface-2);
+        font-size: 13.5px;
+        color: var(--muted);
+        min-height: 64px;
+      }
+      .flow-note code {
+        background: var(--surface);
+      }
+
+      /* Timeline */
+      .timeline {
+        padding: 18px;
+        overflow-x: auto;
+      }
+      .tl {
+        display: grid;
+        grid-template-columns: 150px repeat(6, minmax(110px, 1fr));
+        gap: 6px;
+        min-width: 820px;
+        font-size: 13px;
+      }
+      .tl .h {
+        font-weight: 600;
+        color: var(--muted);
+        font-size: 12px;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        padding: 6px;
+      }
+      .tl .lane {
+        font-weight: 600;
+        padding: 10px 6px;
+      }
+      .tl .cell {
+        padding: 8px;
+        border-radius: 8px;
+        min-height: 40px;
+      }
+      .tl .cell.on {
+        background: var(--accent-soft);
+        border: 1px solid var(--accent);
+      }
+      .tl .cell.write {
+        background: var(--effect-soft);
+        border: 1px solid var(--effect);
+      }
+      .tl .cell.bad {
+        background: var(--state-soft);
+        border: 1px solid var(--state);
+      }
+      .compare-toggle {
+        display: inline-flex;
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        overflow: hidden;
+        margin-bottom: 12px;
+      }
+      .compare-toggle button {
+        border: 0;
+        background: var(--surface);
+        color: var(--text);
+        padding: 7px 14px;
+        cursor: pointer;
+        font: inherit;
+        font-size: 13.5px;
+      }
+      .compare-toggle button[aria-pressed="true"] {
+        background: var(--text);
+        color: var(--bg);
+      }
+
+      /* Families */
+      .fam-filter {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-bottom: 12px;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 14px;
+      }
+      .table-wrap {
+        overflow-x: auto;
+      }
+      th,
+      td {
+        text-align: left;
+        padding: 10px 12px;
+        border-bottom: 1px solid var(--line);
+        vertical-align: top;
+      }
+      th {
+        font-size: 12px;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        color: var(--muted);
+        font-weight: 600;
+        background: var(--surface-2);
+      }
+      tr.hidden {
+        display: none;
+      }
+      td .pill {
+        display: inline-block;
+        font-size: 12px;
+        padding: 1px 8px;
+        border-radius: 999px;
+        margin: 1px 2px 1px 0;
+      }
+      .pill.effect {
+        background: var(--effect-soft);
+        color: var(--effect);
+      }
+      .pill.state {
+        background: var(--state-soft);
+        color: var(--state);
+      }
+      .pill.none {
+        background: var(--surface-2);
+        color: var(--muted);
+      }
+
+      /* Decisions */
+      details.dec {
+        padding: 0;
+        margin-bottom: 10px;
+      }
+      details.dec summary {
+        list-style: none;
+        cursor: pointer;
+        padding: 16px 18px;
+        display: flex;
+        gap: 12px;
+        align-items: baseline;
+      }
+      details.dec summary::-webkit-details-marker {
+        display: none;
+      }
+      details.dec summary::before {
+        content: "+";
+        font-family: var(--mono);
+        color: var(--accent);
+        width: 12px;
+      }
+      details.dec[open] summary::before {
+        content: "−";
+      }
+      details.dec summary .q {
+        font-weight: 600;
+      }
+      details.dec summary .tag {
+        margin-left: auto;
+        font-size: 12px;
+        color: var(--muted);
+        white-space: nowrap;
+      }
+      details.dec .body {
+        padding: 0 18px 16px 42px;
+        color: var(--muted);
+        font-size: 14.5px;
+      }
+      details.dec .body p {
+        margin: 0 0 8px;
+      }
+
+      .follow {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 14px;
+      }
+      .follow .card {
+        padding: 18px;
+      }
+      .follow .card p {
+        color: var(--muted);
+        font-size: 14px;
+        margin: 6px 0 0;
+      }
+      .status {
+        font-size: 12px;
+        font-weight: 600;
+        padding: 2px 8px;
+        border-radius: 6px;
+      }
+      .status.done {
+        background: var(--derive-soft);
+        color: var(--derive);
+      }
+      .status.later {
+        background: var(--surface-2);
+        color: var(--muted);
+      }
+
+      footer {
+        padding: 32px 0 56px;
+        color: var(--muted);
+        font-size: 13px;
+        border-top: 1px solid var(--line);
+      }
+
+      @media (max-width: 880px) {
+        .arch,
+        .flow {
+          grid-template-columns: 1fr;
+        }
+        .panel {
+          position: static;
+        }
+        .grid-3,
+        .follow {
+          grid-template-columns: 1fr;
+        }
+        header.top strong {
+          display: none;
+        }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        * {
+          transition: none !important;
+          scroll-behavior: auto !important;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <header class="top">
+      <div class="wrap">
+        <strong>Combobox · MobX</strong>
+        <nav class="toc" aria-label="Sections">
+          <a href="#principles">Principles</a>
+          <a href="#architecture">Architecture</a>
+          <a href="#flows">Flows</a>
+          <a href="#commit">Writes after commit</a>
+          <a href="#families">Selector families</a>
+          <a href="#decisions">Decisions</a>
+          <a href="#next">What's next</a>
+        </nav>
+        <button
+          class="theme-btn"
+          id="themeBtn"
+          type="button"
+          aria-label="Toggle color theme"
+        >
+          Theme
+        </button>
+      </div>
+    </header>
+
+    <div class="hero">
+      <div class="wrap">
+        <div class="eyebrow">Design document</div>
+        <h1>The combobox on a MobX core</h1>
+        <p class="lede">
+          How <code>combobox-web</code> keeps its state after the rewrite: a
+          frozen config and a props gate feed the selector stores, a Core turns
+          them into one plain view model, and the views only render. Same
+          properties, markup and behaviour as the released widget, with two bug
+          fixes.
+        </p>
+        <div class="meta">
+          <span class="chip"
+            >mendix/web-widgets
+            <a href="https://github.com/mendix/web-widgets/pull/2572"
+              >#2572</a
+            ></span
+          >
+          <span class="chip"
+            >Tests first:
+            <a href="https://github.com/mendix/web-widgets/pull/2573"
+              >#2573</a
+            ></span
+          >
+          <span class="chip"
+            >MobX 6.12.3 · brandi · downshift · floating-ui</span
+          >
+          <span class="chip">257 unit tests · 5 snapshots unchanged</span>
+        </div>
+      </div>
+    </div>
+
+    <section id="principles">
+      <div class="wrap">
+        <h2>Principles</h2>
+        <p class="sub">
+          Six rules carry the whole design. Most of the code is the result of
+          applying them consistently.
+        </p>
+        <div class="grid-3">
+          <div class="card principle">
+            <div class="n">01</div>
+            <h3>Static props are read once</h3>
+            <p>
+              Simple-type props never change for a widget instance. They go into
+              a frozen <code>ComboboxConfig</code> at construction and are never
+              observed.
+            </p>
+          </div>
+          <div class="card principle">
+            <div class="n">02</div>
+            <h3>Mendix values through a gate</h3>
+            <p>
+              Value objects change on every render. They live behind a
+              <code>DerivedPropsGate</code> as <code>observable.ref</code>, read
+              through plain getters so an in-place change is never hidden.
+            </p>
+          </div>
+          <div class="card principle">
+            <div class="n">03</div>
+            <h3>Derive, don't copy</h3>
+            <p>
+              Selectors and providers are computeds over the gate. The only
+              state left is what the UI owns: search term, open flag, highlight,
+              and a few loading latches.
+            </p>
+          </div>
+          <div class="card principle">
+            <div class="n">04</div>
+            <h3>Side effects are setup reactions</h3>
+            <p>
+              Datasource limit, filter, selection sync and keep-selection run in
+              reactions registered with a setup host, started on mount and
+              disposed on unmount.
+            </p>
+          </div>
+          <div class="card principle">
+            <div class="n">05</div>
+            <h3>No Mendix writes during render</h3>
+            <p>
+              Props reach the gate during render so that render shows them, but
+              every reaction that writes to Mendix waits for React to commit.
+            </p>
+          </div>
+          <div class="card principle">
+            <div class="n">06</div>
+            <h3>Views never see MobX</h3>
+            <p>
+              Views get a plain <code>vm</code> snapshot through
+              <code>useSyncExternalStore</code>, and call its commands. MobX
+              never leaves the Core.
+            </p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="architecture">
+      <div class="wrap">
+        <h2>Architecture</h2>
+        <p class="sub">
+          Click any box to see what it owns, what it derives and which side
+          effects it runs.
+        </p>
+        <div class="legend" aria-hidden="true">
+          <span
+            ><i class="sw" style="background: var(--mendix)"></i>Mendix
+            runtime</span
+          >
+          <span
+            ><i class="sw" style="background: var(--state)"></i>Owns state</span
+          >
+          <span
+            ><i class="sw" style="background: var(--derive)"></i>Derived
+            (computed)</span
+          >
+          <span
+            ><i class="sw" style="background: var(--effect)"></i>Side
+            effects</span
+          >
+          <span
+            ><i class="sw" style="background: var(--accent)"></i>React
+            view</span
+          >
+        </div>
+        <div class="arch">
+          <div class="card diagram" id="diagram">
+            <div class="layer">
+              <div class="layer-title"><span>Mendix runtime</span></div>
+              <div class="row">
+                <button class="node" data-id="mendix" data-kind="mendix">
+                  <span class="step-badge"></span
+                  ><span class="t">Mendix client</span
+                  ><span class="d"
+                    >New value objects every render: EditableValue, ListValue,
+                    SelectionValue…</span
+                  >
+                </button>
+              </div>
+            </div>
+            <div class="arrow">
+              props ↓ · ↑ setValue / setLimit / setSelection
+            </div>
+            <div class="layer">
+              <div class="layer-title">
+                <span>Widget entry</span
+                ><span class="mono">src/Combobox.tsx</span>
+              </div>
+              <div class="row">
+                <button class="node" data-id="widget" data-kind="view">
+                  <span class="step-badge"></span
+                  ><span class="t">useComboboxCore</span
+                  ><span class="d"
+                    >One container per instance, props pushed in render, vm via
+                    useSyncExternalStore</span
+                  >
+                </button>
+              </div>
+            </div>
+            <div class="arrow">setProps ↓ · ↑ vm snapshot</div>
+            <div class="layer">
+              <div class="layer-title">
+                <span>Composition root</span
+                ><span class="mono">ComboboxContainer (brandi)</span>
+              </div>
+              <div class="row">
+                <button class="node" data-id="config" data-kind="derive">
+                  <span class="step-badge"></span><span class="t">config</span
+                  ><span class="d">Frozen static props</span>
+                </button>
+                <button class="node" data-id="gate" data-kind="state">
+                  <span class="step-badge"></span><span class="t">gate</span
+                  ><span class="d">Latest Mendix values</span>
+                </button>
+                <button class="node" data-id="host" data-kind="effect">
+                  <span class="step-badge"></span
+                  ><span class="t">setup host</span
+                  ><span class="d">Lifecycle + render-phase scheduler</span>
+                </button>
+              </div>
+              <div class="nested">
+                <div class="layer-title">
+                  <span>Core</span
+                  ><span class="mono">src/core/ComboboxCore.ts</span>
+                </div>
+                <div class="row">
+                  <button class="node" data-id="core" data-kind="state">
+                    <span class="step-badge"></span
+                    ><span class="t">ComboboxCore</span
+                    ><span class="d"
+                      >UI state, view-model computeds, commands</span
+                    >
+                  </button>
+                  <button class="node" data-id="filterEvent" data-kind="effect">
+                    <span class="step-badge"></span
+                    ><span class="t">FilterInputEventService</span
+                    ><span class="d">Debounced filter-input action</span>
+                  </button>
+                </div>
+              </div>
+              <div class="nested">
+                <div class="layer-title">
+                  <span>Selector (one per family × mode)</span
+                  ><span class="mono">src/helpers/</span>
+                </div>
+                <div class="row">
+                  <button class="node" data-id="selector" data-kind="derive">
+                    <span class="step-badge"></span
+                    ><span class="t">Selector</span
+                    ><span class="d"
+                      >status, value, readOnly, validation, setValue</span
+                    >
+                  </button>
+                  <button class="node" data-id="options" data-kind="effect">
+                    <span class="step-badge"></span
+                    ><span class="t">Options provider</span
+                    ><span class="d"
+                      >Search term, page, limit, filter, lookup</span
+                    >
+                  </button>
+                  <button class="node" data-id="captions" data-kind="derive">
+                    <span class="step-badge"></span
+                    ><span class="t">Captions provider</span
+                    ><span class="d"
+                      >Captions, custom content, empty caption</span
+                    >
+                  </button>
+                </div>
+              </div>
+            </div>
+            <div class="arrow">vm ↓ · ↑ commands</div>
+            <div class="layer">
+              <div class="layer-title">
+                <span>Views (no MobX)</span
+                ><span class="mono">src/components/, src/hooks/</span>
+              </div>
+              <div class="row">
+                <button class="node" data-id="views" data-kind="view">
+                  <span class="step-badge"></span
+                  ><span class="t">Single / MultiSelection</span
+                  ><span class="d">Render from vm only</span>
+                </button>
+                <button class="node" data-id="behavior" data-kind="view">
+                  <span class="step-badge"></span
+                  ><span class="t">useComboboxBehavior</span
+                  ><span class="d">Controlled downshift</span>
+                </button>
+                <button class="node" data-id="popover" data-kind="view">
+                  <span class="step-badge"></span
+                  ><span class="t">useComboboxPopover</span
+                  ><span class="d">floating-ui menu</span>
+                </button>
+              </div>
+            </div>
+          </div>
+          <aside class="card panel" id="panel" aria-live="polite">
+            <p class="empty">Select a box in the diagram.</p>
+          </aside>
+        </div>
+      </div>
+    </section>
+
+    <section id="flows">
+      <div class="wrap">
+        <h2>Flows</h2>
+        <p class="sub">
+          Step through how data moves. Each step lights up the boxes involved.
+        </p>
+        <div class="flow-tabs" role="tablist" id="flowTabs"></div>
+        <div class="flow">
+          <div class="card steps">
+            <div id="steps"></div>
+            <div class="flow-controls">
+              <button class="btn" id="prevStep" type="button">← Back</button>
+              <button class="btn primary" id="nextStep" type="button">
+                Next →
+              </button>
+              <button class="btn" id="playFlow" type="button">Play</button>
+            </div>
+          </div>
+          <div class="card flow-viz">
+            <div class="mini" id="mini"></div>
+            <div class="flow-note" id="flowNote"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="commit">
+      <div class="wrap">
+        <h2>Writes after commit</h2>
+        <p class="sub">
+          Props still reach the gate during render, so the render that receives
+          new Mendix values also shows them. What changed is when the reactions
+          that write back to Mendix run. Compare the released widget with the
+          rewrite.
+        </p>
+        <div class="compare-toggle" role="group" aria-label="Compare">
+          <button type="button" id="cmpBefore" aria-pressed="false">
+            Released widget
+          </button>
+          <button type="button" id="cmpAfter" aria-pressed="true">
+            Rewrite
+          </button>
+        </div>
+        <div class="card timeline"><div class="tl" id="timeline"></div></div>
+        <p class="sub" style="margin-top: 14px" id="cmpNote"></p>
+      </div>
+    </section>
+
+    <section id="families">
+      <div class="wrap">
+        <h2>Selector families</h2>
+        <p class="sub">
+          The container picks one selector class from the config. Everything in
+          a selector is derived from the gate except the state listed in the
+          last column.
+        </p>
+        <div class="fam-filter" id="famFilter">
+          <button class="tab" aria-selected="true" data-f="all" type="button">
+            All
+          </button>
+          <button
+            class="tab"
+            aria-selected="false"
+            data-f="effects"
+            type="button"
+          >
+            With side effects
+          </button>
+          <button class="tab" aria-selected="false" data-f="lazy" type="button">
+            Lazy loading capable
+          </button>
+        </div>
+        <div class="card table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Family × mode</th>
+                <th>Class</th>
+                <th>Providers</th>
+                <th>Setup reactions</th>
+                <th>State</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr data-tags="all">
+                <td>Enumeration / Boolean · single</td>
+                <td><code>EnumBooleanSingleSelector</code></td>
+                <td>
+                  <code>EnumBoolOptionsProvider</code><br /><code
+                    >EnumAndBooleanSimpleCaptionsProvider</code
+                  >
+                </td>
+                <td><span class="pill none">none</span></td>
+                <td><span class="pill state">search term</span></td>
+              </tr>
+              <tr data-tags="all">
+                <td>Static values · single</td>
+                <td><code>StaticSingleSelector</code></td>
+                <td>
+                  <code>StaticOptionsProvider</code><br /><code
+                    >StaticCaptionsProvider</code
+                  >
+                </td>
+                <td><span class="pill none">none</span></td>
+                <td><span class="pill state">search term</span></td>
+              </tr>
+              <tr data-tags="all effects lazy">
+                <td>Association · single / multi</td>
+                <td>
+                  <code>AssociationSingleSelector</code><br /><code
+                    >AssociationMultiSelector</code
+                  >
+                </td>
+                <td>
+                  <code>DatasourceOptionsProvider</code><br /><code
+                    >DatasourceCaptionsProvider</code
+                  >
+                </td>
+                <td>
+                  <span class="pill effect">limit</span
+                  ><span class="pill effect">filter</span>
+                </td>
+                <td>
+                  <span class="pill state">search term</span
+                  ><span class="pill state">latched page</span
+                  ><span class="pill state">page request</span
+                  ><span class="pill state">lookup</span
+                  ><span class="pill state">first-page latch</span>
+                </td>
+              </tr>
+              <tr data-tags="all effects lazy">
+                <td>Database · single</td>
+                <td><code>DatabaseSingleSelectionSelector</code></td>
+                <td>
+                  <code>DatasourceOptionsProvider</code><br /><code
+                    >DatasourceCaptionsProvider</code
+                  >
+                </td>
+                <td>
+                  <span class="pill effect">limit</span
+                  ><span class="pill effect">filter</span
+                  ><span class="pill effect">selection sync</span
+                  ><span class="pill effect">keep-selection</span>
+                </td>
+                <td>
+                  <span class="pill state">as association</span
+                  ><span class="pill state">loaded once</span>
+                </td>
+              </tr>
+              <tr data-tags="all effects lazy">
+                <td>Database · multi</td>
+                <td><code>DatabaseMultiSelectionSelector</code></td>
+                <td>
+                  <code>DatasourceOptionsProvider</code><br /><code
+                    >DatasourceCaptionsProvider</code
+                  >
+                </td>
+                <td>
+                  <span class="pill effect">limit</span
+                  ><span class="pill effect">filter</span
+                  ><span class="pill effect">keep-selection</span>
+                </td>
+                <td><span class="pill state">as association</span></td>
+              </tr>
+              <tr data-tags="all">
+                <td>Editor preview</td>
+                <td>
+                  <code>DatasourcePreviewSelector</code><br /><code
+                    >StaticPreviewSelector</code
+                  >
+                </td>
+                <td>Plain objects over the preview props</td>
+                <td><span class="pill none">none</span></td>
+                <td><span class="pill none">none</span></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <section id="decisions">
+      <div class="wrap">
+        <h2>Decisions</h2>
+        <p class="sub">
+          The choices a reviewer is most likely to question, with the reasoning.
+        </p>
+        <details class="dec card">
+          <summary>
+            <span class="q">Why push props during render at all?</span
+            ><span class="tag">rendering</span>
+          </summary>
+          <div class="body">
+            <p>
+              So the render that receives new Mendix values also shows them,
+              without a frame of stale data. The released widget did the same
+              through <code>updateProps</code>.
+            </p>
+            <p>
+              The snapshot subscription ignores changes made by that push,
+              because the same render reads the fresh snapshot anyway. Reporting
+              it would schedule a React update while rendering.
+            </p>
+          </div>
+        </details>
+        <details class="dec card">
+          <summary>
+            <span class="q">Why a commit-phase flush and not a microtask?</span
+            ><span class="tag">rendering</span>
+          </summary>
+          <div class="body">
+            <p>
+              Reactions that write to Mendix take the setup host's
+              <code>schedule</code> as their MobX scheduler. During a props push
+              a run is queued; <code>useLayoutEffect</code> flushes the queue
+              once React commits, still before paint. A render React replays or
+              throws away writes nothing, and its queued runs happen at the next
+              commit with the state of that moment.
+            </p>
+            <p>
+              Outside a props push the runs happen at once, so selector specs
+              that drive the container directly see the writes synchronously. A
+              microtask would have made every one of them asynchronous.
+            </p>
+          </div>
+        </details>
+        <details class="dec card">
+          <summary>
+            <span class="q"
+              >Why are Mendix values plain getters, not computeds?</span
+            ><span class="tag">MobX</span>
+          </summary>
+          <div class="body">
+            <p>
+              A computed that returns a Mendix value object compares it by
+              identity and hides a change made in place. Every derivation reads
+              <code>gate.props</code> itself.
+            </p>
+          </div>
+        </details>
+        <details class="dec card">
+          <summary>
+            <span class="q"
+              >Why does the database single selection keep a "loaded once"
+              flag?</span
+            ><span class="tag">parity</span>
+          </summary>
+          <div class="body">
+            <p>
+              It reports <code>unavailable</code> until its datasource has
+              loaded once, so the placeholder shows during the first load, as in
+              the released widget. A pure derivation would show the bound value
+              and then flicker to the datasource caption. A widget-level test
+              from #2573 pins it.
+            </p>
+          </div>
+        </details>
+        <details class="dec card">
+          <summary>
+            <span class="q"
+              >Why does the options provider own all lazy-loading state?</span
+            ><span class="tag">lazy loading</span>
+          </summary>
+          <div class="body">
+            <p>
+              Limit, filter, bound-value lookup and the first-page latch depend
+              on each other. With the latch in the Core, the result depended on
+              whether downshift reported the open state or the typed text first.
+              Now <code>Core.open()</code> calls
+              <code>requestFirstPage()</code>, and ending a lookup, by a search
+              or a page request, always asks for a full first page. Tests cover
+              both orders.
+            </p>
+          </div>
+        </details>
+        <details class="dec card">
+          <summary>
+            <span class="q">Why no structural sharing in the view model?</span
+            ><span class="tag">performance</span>
+          </summary>
+          <div class="body">
+            <p>
+              Option content is a new React element on every pass, so reusing
+              unchanged slices by reference never matched, and no view memoises
+              on them. The attempt was removed. It comes back with memoised
+              option rows, options shaped as
+              <code>{ id, caption, content }</code>, content cached per item,
+              and <code>comparer.shallow</code> slices, tested by render counts.
+            </p>
+          </div>
+        </details>
+        <details class="dec card">
+          <summary>
+            <span class="q">Why does the editor preview still bundle MobX?</span
+            ><span class="tag">bundle</span>
+          </summary>
+          <div class="body">
+            <p>
+              The preview reuses the runtime Core over plain preview selectors,
+              so preview and app share the view-model code and cannot drift. It
+              costs about 90 KB in a file only Studio Pro loads. Extracting a
+              pure view-model builder could drop it later.
+            </p>
+          </div>
+        </details>
+      </div>
+    </section>
+
+    <section id="next">
+      <div class="wrap">
+        <h2>What's next</h2>
+        <p class="sub">
+          The architecture review found four soft spots. Two are fixed in this
+          PR; two wait for the view split.
+        </p>
+        <div class="follow">
+          <div class="card">
+            <span class="status done">Fixed in #2572</span>
+            <h3 style="margin-top: 8px">Mendix writes during render</h3>
+            <p>
+              Reactions that write to Mendix run after the commit, through the
+              setup host's scheduler.
+            </p>
+          </div>
+          <div class="card">
+            <span class="status done">Fixed in #2572</span>
+            <h3 style="margin-top: 8px">Lazy-loading state in two places</h3>
+            <p>
+              The first-page latch lives in
+              <code>DatasourceOptionsProvider</code>, next to the lookup it
+              depends on.
+            </p>
+          </div>
+          <div class="card">
+            <span class="status later">With the view split</span>
+            <h3 style="margin-top: 8px">Text-only changes</h3>
+            <p>
+              <code>t</code> is a stable function. It becomes a computed over
+              the texts, so a memoised part re-renders when only a text changes.
+            </p>
+          </div>
+          <div class="card">
+            <span class="status later">With the view split</span>
+            <h3 style="margin-top: 8px">Structural sharing</h3>
+            <p>
+              Memoised option rows first, then per-item content caching and
+              shallow-compared slices, verified with render-count tests.
+            </p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <footer>
+      <div class="wrap">
+        Design document for
+        <a href="https://github.com/mendix/web-widgets/pull/2572"
+          >mendix/web-widgets#2572</a
+        >. Source of truth:
+        <code
+          >packages/pluggableWidgets/combobox-web/openspec/changes/combobox-mobx-rewrite/</code
+        >.
+      </div>
+    </footer>
+
+    <script>
+      (function () {
+        "use strict";
+        var root = document.documentElement;
+        try {
+          var saved = localStorage.getItem("cb-theme");
+          if (saved) root.setAttribute("data-theme", saved);
+        } catch (e) {}
+        document
+          .getElementById("themeBtn")
+          .addEventListener("click", function () {
+            var dark = root.getAttribute("data-theme")
+              ? root.getAttribute("data-theme") === "dark"
+              : matchMedia("(prefers-color-scheme: dark)").matches;
+            var next = dark ? "light" : "dark";
+            root.setAttribute("data-theme", next);
+            try {
+              localStorage.setItem("cb-theme", next);
+            } catch (e) {}
+          });
+
+        var NODES = {
+          mendix: {
+            kind: "mendix",
+            title: "Mendix client",
+            file: "Mendix runtime",
+            role: "Hands the widget its properties and applies the widget's writes.",
+            owns: [
+              "Every value object: EditableValue, ReferenceValue(Set), ListValue, SelectionValue, DynamicValue, ActionValue",
+            ],
+            notes: [
+              "A new object on every render; simple-type props never change for an instance",
+              "setLimit / setFilter / setValue / setSelection take effect in later props",
+            ],
+          },
+          widget: {
+            kind: "view",
+            title: "useComboboxCore",
+            file: "src/hooks/useComboboxCore.ts · src/Combobox.tsx",
+            role: "Connects one widget instance to its container.",
+            owns: [
+              "useConst: createComboboxContainer(props), once",
+              "useSetup: starts the setup host on mount",
+              "host.pushProps(() => container.setProps(props)) during render",
+              "useSyncExternalStore over a reaction on core.viewModel",
+              "useLayoutEffect: host.flush() after every commit",
+            ],
+            notes: [
+              "The subscription ignores changes made by the props push; that render reads the fresh snapshot",
+              "Renders the Placeholder while status is unavailable",
+            ],
+          },
+          config: {
+            kind: "derive",
+            title: "ComboboxConfig",
+            file: "src/core/Combobox.config.ts",
+            role: "The static Studio Pro properties, frozen at construction.",
+            owns: [
+              "family, mode, filterType, lazyLoading, captionType, clearable, customEditability, selection method, styles…",
+            ],
+            notes: [
+              "Never observable: static props cannot change between renders",
+              "Decides which selector class the container binds",
+            ],
+          },
+          gate: {
+            kind: "state",
+            title: "Props gate",
+            file: "@mendix/widget-plugin-mobx-kit · src/core/ComboboxGate.ts",
+            role: "Holds the latest props object as observable.ref.",
+            owns: ["gate.props: the whole container props object"],
+            notes: [
+              "setProps ignores a props object it has already seen",
+              "Selectors and providers read Mendix values through plain getters over gate.props",
+            ],
+          },
+          host: {
+            kind: "effect",
+            title: "Setup host",
+            file: "src/core/ComboboxSetup.service.ts",
+            role: "Lifecycle for setup components, plus the render-phase scheduler.",
+            owns: [
+              "setup(): runs every registered setup() on mount, disposes on unmount",
+              "pushProps(push): marks the props push",
+              "schedule(run): queues while pushing, runs at once otherwise",
+              "flush(): runs the queue after commit",
+            ],
+            notes: [
+              "Every reaction that writes to Mendix passes schedule as its MobX scheduler",
+            ],
+          },
+          core: {
+            kind: "state",
+            title: "ComboboxCore",
+            file: "src/core/ComboboxCore.ts",
+            role: "Owns the UI state and derives the view model.",
+            owns: [
+              "isOpen, highlightedIndex (observable)",
+              "computeds: texts, envelope, input, options, selection, flags, loading → viewModel (keepAlive)",
+              "commands: open close toggle highlight select deselect toggleItem clear selectAll setInputValue loadMore enter leave",
+            ],
+            notes: [
+              "open() asks the options provider for the lazy first page",
+              "The input text is the selector's search term",
+              "Commands are bound after makeObservable so they are action wrappers",
+            ],
+          },
+          filterEvent: {
+            kind: "effect",
+            title: "FilterInputEventService",
+            file: "src/core/FilterInputEvent.service.ts",
+            role: 'Runs the "On change filter input" action, debounced.',
+            owns: ["notify(text): debounced by filterInputDebounceInterval"],
+            notes: [
+              "Sends undefined for an empty term",
+              "Skips when the action cannot execute or is executing",
+              "Drops a pending call on dispose",
+            ],
+          },
+          selector: {
+            kind: "derive",
+            title: "Selector",
+            file: "src/helpers/{Association,Database,EnumBool,Static}/",
+            role: "The model seam the Core derives from, one class per family × mode.",
+            owns: [
+              "type, status, readOnly, validation, clearable, currentId (computeds)",
+              "setValue: writes the attribute, reference or selection",
+              "multi: getOptions, isOptionsSelected",
+            ],
+            notes: [
+              'Database single keeps a "loaded once" flag for the first-load placeholder',
+              "Database selectors sync the datasource selection and keep-selection in setup reactions",
+            ],
+          },
+          options: {
+            kind: "effect",
+            title: "Options provider",
+            file: "src/helpers/DatasourceOptionsProvider.ts · BaseOptionsProvider.ts",
+            role: "Option ids, search, and everything that touches the datasource.",
+            owns: [
+              "searchTerm, client-side matching (match-sorter)",
+              "latched page while the datasource reloads",
+              "limit autorun, debounced filter reaction",
+              "bound-value lookup (containsExact, limit 1)",
+              "first-page latch, reset on a new filter or read-only state",
+            ],
+            notes: [
+              "requestFirstPage(): once per filter; ending a lookup always asks for a full first page",
+              "Static and enumeration providers have no side effects",
+            ],
+          },
+          captions: {
+            kind: "derive",
+            title: "Captions provider",
+            file: "src/helpers/DatasourceCaptionsProvider.tsx · Static/EnumBool variants",
+            role: "Turns ids into text and rendered content.",
+            owns: [
+              "get(id): caption text",
+              "render(id, placement): custom content or caption",
+              "emptyCaption",
+            ],
+            notes: [
+              "render() returns a new React element on every call; this is why reference-based sharing never matched",
+            ],
+          },
+          views: {
+            kind: "view",
+            title: "SingleSelection / MultiSelection",
+            file: "src/components/",
+            role: "Render the vm and nothing else.",
+            owns: ["Input, chips, menu, select-all, footer slot, loaders"],
+            notes: [
+              "No MobX imports",
+              "Parts receive only the slices they need",
+            ],
+          },
+          behavior: {
+            kind: "view",
+            title: "useComboboxBehavior",
+            file: "src/hooks/useComboboxBehavior.ts",
+            role: "Runs downshift fully controlled against the vm.",
+            owns: [
+              "State reducers kept from the released widget",
+              "Chip navigation, focus boundary (enter / leave), status messages",
+            ],
+            notes: [
+              "Pinned at widget level by the #2573 keyboard and event specs",
+            ],
+          },
+          popover: {
+            kind: "view",
+            title: "useComboboxPopover",
+            file: "src/hooks/useComboboxPopover.ts",
+            role: "Positions the menu with floating-ui.",
+            owns: [
+              "Reference and floating refs, placement, always-open mode for the preview",
+            ],
+            notes: [],
+          },
+        };
+
+        var nodeEls = Array.prototype.slice.call(
+          document.querySelectorAll("#diagram .node"),
+        );
+        var panel = document.getElementById("panel");
+        function esc(s) {
+          return String(s).replace(/[&<>"]/g, function (c) {
+            return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c];
+          });
+        }
+        function list(items) {
+          return items.length
+            ? "<ul>" +
+                items
+                  .map(function (i) {
+                    return "<li>" + esc(i) + "</li>";
+                  })
+                  .join("") +
+                "</ul>"
+            : "<dd class='empty'>—</dd>";
+        }
+        function select(id) {
+          var n = NODES[id];
+          nodeEls.forEach(function (el) {
+            el.classList.toggle("selected", el.dataset.id === id);
+          });
+          panel.innerHTML =
+            '<span class="kind ' +
+            n.kind +
+            '">' +
+            {
+              mendix: "Mendix runtime",
+              state: "Owns state",
+              derive: "Derived",
+              effect: "Side effects",
+              view: "React view",
+            }[n.kind] +
+            "</span>" +
+            "<h3>" +
+            esc(n.title) +
+            "</h3><div class='file'>" +
+            esc(n.file) +
+            "</div>" +
+            "<dl><dt>Role</dt><dd>" +
+            esc(n.role) +
+            "</dd><dt>Owns</dt><dd>" +
+            list(n.owns) +
+            "</dd>" +
+            (n.notes.length
+              ? "<dt>Notes</dt><dd>" + list(n.notes) + "</dd>"
+              : "") +
+            "</dl>";
+        }
+        nodeEls.forEach(function (el) {
+          el.addEventListener("click", function () {
+            select(el.dataset.id);
+          });
+        });
+        select("core");
+
+        var FLOWS = [
+          {
+            id: "in",
+            label: "Mendix → screen",
+            steps: [
+              {
+                n: ["mendix", "widget"],
+                t: "New props arrive",
+                d: "The Mendix client re-renders the widget with new value objects.",
+                note: "Every render brings new objects. Simple-type props are already in the frozen config.",
+              },
+              {
+                n: ["widget", "gate", "host"],
+                t: "Pushed into the gate",
+                d: "host.pushProps(() => container.setProps(props)) during render.",
+                note: "The push is marked, so reactions that write to Mendix queue instead of running.",
+              },
+              {
+                n: ["gate", "selector", "options", "captions"],
+                t: "Stores recompute",
+                d: "Selector and provider computeds read gate.props.",
+                note: "Nothing is copied: status, value, options and captions are derived on read.",
+              },
+              {
+                n: ["selector", "core"],
+                t: "Core derives the view model",
+                d: "Slices recompute; viewModel is a keepAlive computed.",
+                note: "The subscription ignores this change because the render is already in progress.",
+              },
+              {
+                n: ["core", "widget", "views"],
+                t: "Same render shows it",
+                d: "useSyncExternalStore reads the fresh vm; views render.",
+                note: "No frame of stale data, and no update scheduled while rendering.",
+              },
+            ],
+          },
+          {
+            id: "out",
+            label: "User → Mendix",
+            steps: [
+              {
+                n: ["views", "behavior"],
+                t: "DOM event",
+                d: "Click, key or typing reaches controlled downshift.",
+                note: "The released state reducers decide what the event means.",
+              },
+              {
+                n: ["behavior", "core"],
+                t: "Core command",
+                d: "e.g. select(id), toggleItem(id), setInputValue(text).",
+                note: "Commands are MobX actions bound once, so the views get stable functions.",
+              },
+              {
+                n: ["core", "selector"],
+                t: "Selector writes",
+                d: "selector.setValue(id) → attribute, reference or selection.",
+                note: "Typing also notifies FilterInputEventService, which runs the debounced action.",
+              },
+              {
+                n: ["selector", "mendix"],
+                t: "Mendix applies it",
+                d: "setValue / setSelection on the value objects.",
+                note: "The new value is not read back here.",
+              },
+              {
+                n: ["mendix", "widget", "views"],
+                t: "Back through props",
+                d: "The next render brings the new value, as in the first flow.",
+                note: "One direction for data: Mendix is the source of truth for values.",
+              },
+            ],
+          },
+          {
+            id: "lazy",
+            label: "Lazy first page",
+            steps: [
+              {
+                n: ["views", "behavior", "core"],
+                t: "Menu opens",
+                d: "Core.open() sets isOpen and calls options.requestFirstPage().",
+                note: "The Core no longer tracks loading itself.",
+              },
+              {
+                n: ["options"],
+                t: "Latch",
+                d: "Once per datasource filter and read-only state.",
+                note: "A reaction in the provider resets the latch when either changes.",
+              },
+              {
+                n: ["options", "host"],
+                t: "End a lookup or page",
+                d: "Lookup active: clear filter, limit 100. Otherwise limit + 100 if hasMore.",
+                note: "A search also ends a lookup with a full first page, so the order of open and typing no longer matters.",
+              },
+              {
+                n: ["options", "mendix"],
+                t: "Datasource reloads",
+                d: "loadRequestedOn marks the request; isLoading shows the loader.",
+                note: "While it reloads, the provider keeps the last page instead of an empty list.",
+              },
+              {
+                n: ["mendix", "widget", "views"],
+                t: "New page arrives",
+                d: "A new ListValue ends the pending request; options render.",
+                note: "Further pages load on scroll.",
+              },
+            ],
+          },
+          {
+            id: "write",
+            label: "Writes after commit",
+            steps: [
+              {
+                n: ["widget", "host", "gate"],
+                t: "Props push begins",
+                d: "pushProps marks the window; gate.props changes.",
+                note: "Reads are fresh for this render.",
+              },
+              {
+                n: ["options", "selector", "host"],
+                t: "Reactions are invalidated",
+                d: "Limit autorun, selection sync, keep-selection want to run.",
+                note: "Their MobX scheduler is host.schedule, which queues the run during the push.",
+              },
+              {
+                n: ["widget", "views"],
+                t: "Render completes",
+                d: "React builds the tree from the fresh vm.",
+                note: "If React throws this render away, nothing was written.",
+              },
+              {
+                n: ["widget", "host"],
+                t: "Commit → flush",
+                d: "useLayoutEffect calls host.flush().",
+                note: "Each queued reaction re-reads the state of that moment, then writes.",
+              },
+              {
+                n: ["host", "mendix"],
+                t: "Mendix writes",
+                d: "ds.setLimit, setSelection, setKeepSelection.",
+                note: "Before paint, and never inside a render.",
+              },
+            ],
+          },
+        ];
+
+        var tabsEl = document.getElementById("flowTabs"),
+          stepsEl = document.getElementById("steps"),
+          miniEl = document.getElementById("mini"),
+          noteEl = document.getElementById("flowNote");
+        var cur = 0,
+          step = 0,
+          timer = null;
+        FLOWS.forEach(function (f, i) {
+          var b = document.createElement("button");
+          b.className = "tab";
+          b.type = "button";
+          b.setAttribute("role", "tab");
+          b.textContent = f.label;
+          b.addEventListener("click", function () {
+            stop();
+            cur = i;
+            step = 0;
+            renderFlow();
+          });
+          tabsEl.appendChild(b);
+        });
+        var miniIds = [
+          "mendix",
+          "widget",
+          "gate",
+          "host",
+          "core",
+          "selector",
+          "options",
+          "captions",
+          "behavior",
+          "views",
+        ];
+        miniEl.innerHTML = miniIds
+          .map(function (id) {
+            var n = NODES[id];
+            return (
+              '<div class="node" data-mini="' +
+              id +
+              '" data-kind="' +
+              n.kind +
+              '" style="cursor:default"><span class="step-badge"></span><span class="t">' +
+              esc(n.title) +
+              "</span></div>"
+            );
+          })
+          .join("");
+        var miniEls = Array.prototype.slice.call(
+          miniEl.querySelectorAll(".node"),
+        );
+
+        function renderFlow() {
+          var f = FLOWS[cur];
+          Array.prototype.forEach.call(tabsEl.children, function (b, i) {
+            b.setAttribute("aria-selected", i === cur ? "true" : "false");
+          });
+          stepsEl.innerHTML = f.steps
+            .map(function (s, i) {
+              return (
+                '<div class="step' +
+                (i === step ? " active" : "") +
+                '" data-i="' +
+                i +
+                '"><span class="num">' +
+                (i + 1) +
+                '</span><div><div class="st">' +
+                esc(s.t) +
+                '</div><div class="sd">' +
+                esc(s.d) +
+                "</div></div></div>"
+              );
+            })
+            .join("");
+          Array.prototype.forEach.call(
+            stepsEl.querySelectorAll(".step"),
+            function (el) {
+              el.addEventListener("click", function () {
+                stop();
+                step = +el.dataset.i;
+                renderFlow();
+              });
+            },
+          );
+          var lit = f.steps[step].n;
+          miniEls.forEach(function (el) {
+            var on = lit.indexOf(el.dataset.mini) >= 0;
+            el.classList.toggle("lit", on);
+            el.classList.toggle("dim", !on);
+            el.querySelector(".step-badge").textContent = step + 1;
+          });
+          noteEl.innerHTML =
+            "<strong>Step " +
+            (step + 1) +
+            ".</strong> " +
+            esc(f.steps[step].note);
+        }
+        function stop() {
+          if (timer) {
+            clearInterval(timer);
+            timer = null;
+            document.getElementById("playFlow").textContent = "Play";
+          }
+        }
+        document
+          .getElementById("nextStep")
+          .addEventListener("click", function () {
+            stop();
+            step = Math.min(step + 1, FLOWS[cur].steps.length - 1);
+            renderFlow();
+          });
+        document
+          .getElementById("prevStep")
+          .addEventListener("click", function () {
+            stop();
+            step = Math.max(step - 1, 0);
+            renderFlow();
+          });
+        document
+          .getElementById("playFlow")
+          .addEventListener("click", function () {
+            if (timer) {
+              stop();
+              return;
+            }
+            this.textContent = "Pause";
+            step = 0;
+            renderFlow();
+            timer = setInterval(function () {
+              if (step >= FLOWS[cur].steps.length - 1) {
+                stop();
+                return;
+              }
+              step++;
+              renderFlow();
+            }, 1600);
+          });
+        renderFlow();
+
+        var LANES = ["React", "Gate", "Reactions", "Mendix"];
+        var PHASES = [
+          "render starts",
+          "props push",
+          "render",
+          "commit",
+          "layout effect",
+          "paint",
+        ];
+        var TL = {
+          before: {
+            React: [
+              "on:render",
+              "on:render",
+              "on:render",
+              "on:commit",
+              "",
+              "on:paint",
+            ],
+            Gate: ["", "on:updateProps copies props", "", "", "", ""],
+            Reactions: ["", "bad:run inside render", "", "", "", ""],
+            Mendix: ["", "bad:setLimit / setSelection", "", "", "", ""],
+            note: "Released widget: updateProps ran during render and wrote to Mendix values from inside it. A replayed or discarded render still wrote.",
+          },
+          after: {
+            React: [
+              "on:render",
+              "on:render",
+              "on:render",
+              "on:commit",
+              "on:useLayoutEffect",
+              "on:paint",
+            ],
+            Gate: ["", "on:gate.props = props", "", "", "", ""],
+            Reactions: [
+              "",
+              "on:invalidated → queued",
+              "",
+              "",
+              "write:host.flush() runs them",
+              "",
+            ],
+            Mendix: ["", "", "", "", "write:setLimit / setSelection", ""],
+            note: "Rewrite: the push still happens in render so reads are fresh, but writes wait for the commit and run in a layout effect, before paint.",
+          },
+        };
+        var tlEl = document.getElementById("timeline"),
+          cmpNote = document.getElementById("cmpNote");
+        function renderTL(which) {
+          var d = TL[which],
+            html =
+              '<div class="h"></div>' +
+              PHASES.map(function (p) {
+                return '<div class="h">' + p + "</div>";
+              }).join("");
+          LANES.forEach(function (l) {
+            html += '<div class="lane">' + l + "</div>";
+            d[l].forEach(function (c) {
+              var parts = c.split(":"),
+                cls = parts[0],
+                txt = parts.slice(1).join(":");
+              html +=
+                '<div class="cell ' +
+                (c ? cls : "") +
+                '">' +
+                esc(txt) +
+                "</div>";
+            });
+          });
+          tlEl.innerHTML = html;
+          cmpNote.textContent = d.note;
+          document
+            .getElementById("cmpBefore")
+            .setAttribute("aria-pressed", which === "before");
+          document
+            .getElementById("cmpAfter")
+            .setAttribute("aria-pressed", which === "after");
+        }
+        document
+          .getElementById("cmpBefore")
+          .addEventListener("click", function () {
+            renderTL("before");
+          });
+        document
+          .getElementById("cmpAfter")
+          .addEventListener("click", function () {
+            renderTL("after");
+          });
+        renderTL("after");
+
+        var famBtns = Array.prototype.slice.call(
+          document.querySelectorAll("#famFilter .tab"),
+        );
+        famBtns.forEach(function (b) {
+          b.addEventListener("click", function () {
+            famBtns.forEach(function (x) {
+              x.setAttribute("aria-selected", x === b ? "true" : "false");
+            });
+            document
+              .querySelectorAll("#families tbody tr")
+              .forEach(function (tr) {
+                tr.classList.toggle(
+                  "hidden",
+                  (" " + tr.dataset.tags + " ").indexOf(
+                    " " + b.dataset.f + " ",
+                  ) < 0,
+                );
+              });
+          });
+        });
+      })();
+    </script>
+  </body>
+</html>
